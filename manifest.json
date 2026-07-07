@@ -1,0 +1,18 @@
+{
+  "name": "Byproduct Summary",
+  "short_name": "Byproduct",
+  "description": "DM nutrient analysis summary for distillers grains and corn gluten feed, filterable by type, year, date range, state, and plant.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fefcf8",
+  "theme_color": "#e8b923",
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-152.png", "sizes": "152x152", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-167.png", "sizes": "167x167", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-180.png", "sizes": "180x180", "type": "image/png", "purpose": "any" }
+  ]
+}
