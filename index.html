@@ -109,6 +109,29 @@
   .app-hidden{display:none;}
   .logout-row{text-align:center;margin-top:14px;}
   .logout-row button{background:none;border:none;color:var(--ink-soft);font-family:'IBM Plex Sans',sans-serif;font-size:11.5px;text-decoration:underline;cursor:pointer;padding:4px;}
+
+  .mode-row{display:flex;justify-content:flex-end;margin-bottom:12px;}
+  .mode-link{background:none;border:none;color:var(--accent-deep);font-family:'IBM Plex Sans',sans-serif;font-size:12.5px;font-weight:600;cursor:pointer;padding:6px 2px;}
+
+  #pasteArea{width:100%;padding:10px;border:1px solid var(--rule);border-radius:7px;background:var(--field);color:var(--ink);font-family:'IBM Plex Mono',monospace;font-size:11.5px;resize:vertical;margin-bottom:10px;}
+  .parse-btn{padding:10px 16px;border:none;border-radius:7px;background:var(--accent);color:var(--ink);font-family:'IBM Plex Sans',sans-serif;font-weight:600;font-size:13.5px;cursor:pointer;}
+  .parse-btn:disabled{opacity:0.55;cursor:default;}
+
+  .preview-row{background:var(--card);border:1px solid var(--rule);border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:12px;}
+  .preview-row.flagged{border-color:#a0341e;background:#fdf2ef;}
+  .preview-row.resolved{border-color:var(--accent-deep);background:var(--accent-wash);}
+  .preview-head{display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-weight:600;margin-bottom:4px;}
+  .preview-vals{color:var(--ink-soft);font-family:'IBM Plex Mono',monospace;font-size:11px;margin-bottom:6px;word-break:break-all;}
+  .preview-flag{color:#a0341e;font-size:11.5px;margin-bottom:6px;}
+  .preview-resolve{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+  .preview-resolve select{flex:1;min-width:140px;padding:6px 8px;font-size:12px;border:1px solid var(--rule);border-radius:6px;background:var(--field);color:var(--ink);}
+  .preview-resolve button{padding:6px 10px;font-size:11.5px;border:1px solid var(--ink);border-radius:6px;background:var(--field);color:var(--ink);cursor:pointer;}
+  .preview-summary{font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;}
+
+  .submit-row{text-align:center;margin-top:6px;}
+  .submit-status{font-size:12px;margin-top:8px;min-height:15px;}
+  .submit-status.err{color:#a0341e;}
+  .submit-status.ok{color:var(--accent-deep);}
 </style>
 </head>
 <body>
@@ -133,6 +156,12 @@
     <div class="sub">Summarized by Wes W. Gentry, Ph.D.</div>
   </header>
 
+  <div class="mode-row">
+    <button id="showAddData" type="button" class="mode-link">+ Add data</button>
+    <button id="showBrowse" type="button" class="mode-link app-hidden">&larr; Back to data</button>
+  </div>
+
+  <div id="browseView">
 
   <section class="card">
     <div class="tier-label"><span class="tier-num">1</span>Byproduct Type</div>
@@ -181,6 +210,26 @@
   </div>
 
   <footer>Nutrient values are percent of dry matter.</footer>
+  </div>
+
+  <div id="addDataView" class="app-hidden">
+
+    <section class="card">
+      <div class="tier-label">Paste new rows</div>
+      <div class="tier-note" style="margin-top:0;margin-bottom:8px;">Copy rows straight from the spreadsheet — same columns as always: Date, Type, Sample ID, Feedyard, Plant, DM, CP, ADF, NDF, Crude Fat, Ash, Ca, P, Mg, K, S, Acid Fat, Year. Feedyard, Sample ID, Acid Fat, and Year are dropped automatically; Year is recalculated from Date.</div>
+      <textarea id="pasteArea" rows="6" placeholder="Paste tab-separated rows here"></textarea>
+      <button id="parseBtn" type="button" class="parse-btn">Parse rows</button>
+    </section>
+
+    <div id="previewArea"></div>
+
+    <div id="submitRow" class="submit-row app-hidden">
+      <button id="submitDataBtn" type="button" class="parse-btn">Submit to database</button>
+      <div id="submitStatus" class="submit-status"></div>
+    </div>
+
+  </div>
+
   <div class="logout-row"><button id="logoutBtn" type="button">Log out</button></div>
 
   </div>
@@ -476,6 +525,248 @@ document.getElementById('logoutBtn').addEventListener('click', async function(){
   document.getElementById('loginEmail').value = '';
   document.getElementById('loginPassword').value = '';
   showLogin();
+});
+
+// ---- Add Data ----
+
+document.getElementById('showAddData').addEventListener('click', function(){
+  document.getElementById('browseView').classList.add('app-hidden');
+  document.getElementById('addDataView').classList.remove('app-hidden');
+  document.getElementById('showAddData').classList.add('app-hidden');
+  document.getElementById('showBrowse').classList.remove('app-hidden');
+});
+document.getElementById('showBrowse').addEventListener('click', function(){
+  document.getElementById('addDataView').classList.add('app-hidden');
+  document.getElementById('browseView').classList.remove('app-hidden');
+  document.getElementById('showBrowse').classList.add('app-hidden');
+  document.getElementById('showAddData').classList.remove('app-hidden');
+});
+
+function levenshtein(a, b){
+  a = a || ''; b = b || '';
+  const m = a.length, n = b.length;
+  const d = Array.from({length: m+1}, function(_, i){ return [i].concat(new Array(n).fill(0)); });
+  for (let j = 0; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++){
+    for (let j = 1; j <= n; j++){
+      const cost = a[i-1] === b[j-1] ? 0 : 1;
+      d[i][j] = Math.min(d[i-1][j] + 1, d[i][j-1] + 1, d[i-1][j-1] + cost);
+    }
+  }
+  return d[m][n];
+}
+
+function normalizePlant(s){
+  return (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function nutrientRanges(){
+  const ranges = {};
+  for (const n of NUTRIENTS){
+    const vals = DATA.map(function(r){ return r[n]; }).filter(function(v){ return v !== null && v !== undefined; });
+    let lo = vals.length ? Math.min.apply(null, vals) : 0;
+    let hi = vals.length ? Math.max.apply(null, vals) : 100;
+    lo = lo * 0.7;
+    hi = hi * 1.3;
+    if (n === 'DM') hi = Math.min(hi, 100);
+    ranges[n] = { lo: lo, hi: hi };
+  }
+  return ranges;
+}
+
+function parseAndValidate(text){
+  const existingPlants = Array.from(new Set(DATA.map(function(r){ return r.Plant; })));
+  const ranges = nutrientRanges();
+  const today = new Date().toISOString().slice(0,10);
+  const lines = text.split(/\r?\n/).map(function(l){ return l.trim(); }).filter(function(l){ return l.length; });
+
+  return lines.map(function(line){
+    const cells = line.split('\t').map(function(c){ return c.trim(); });
+    const flags = [];
+    const row = { flags: flags, resolved: false };
+
+    // Date: column 0
+    const rawDate = cells[0] || '';
+    let isoDate = null;
+    const d = new Date(rawDate);
+    if (rawDate && !isNaN(d.getTime())){
+      isoDate = d.toISOString().slice(0,10);
+      if (isoDate > today) flags.push({ type: 'date', severity: 'soft', msg: 'Date (' + isoDate + ') is in the future.' });
+    } else {
+      flags.push({ type: 'date', severity: 'hard', msg: 'Could not read a date from "' + rawDate + '". Fix it in the paste and re-parse.' });
+    }
+    row.Date = isoDate || rawDate;
+
+    // Type: column 1
+    const rawType = (cells[1] || '').toUpperCase();
+    if (rawType !== 'WDGS' && rawType !== 'WCGF'){
+      flags.push({ type: 'type', severity: 'hard', msg: '"' + (cells[1]||'') + '" is not WDGS or WCGF. Fix it in the paste and re-parse.' });
+    }
+    row.Type = rawType;
+
+    // Plant: column 4 (Date=0, Type=1, Sample ID=2, Feedyard=3, Plant=4)
+    const rawPlant = cells[4] || '';
+    row.Plant = rawPlant;
+    row.suggestedPlant = null;
+    if (!rawPlant){
+      flags.push({ type: 'plant', severity: 'hard', msg: 'No plant name found. Fix it in the paste and re-parse.' });
+    } else if (existingPlants.indexOf(rawPlant) === -1){
+      const normTarget = normalizePlant(rawPlant);
+      let bestMatch = null, bestDist = Infinity;
+      existingPlants.forEach(function(p){
+        if (normalizePlant(p) === normTarget){ bestMatch = p; bestDist = 0; return; }
+        const dist = levenshtein(rawPlant.toLowerCase(), p.toLowerCase());
+        if (dist < bestDist){ bestDist = dist; bestMatch = p; }
+      });
+      if (bestDist <= 2){
+        row.suggestedPlant = bestMatch;
+        flags.push({ type: 'plant', severity: 'soft', msg: rawPlant + ' does not exactly match an existing plant. Closest: ' + bestMatch + '.' });
+      } else {
+        flags.push({ type: 'plant', severity: 'soft', msg: '"' + rawPlant + '" is not in the current plant list -- confirm this is a genuinely new plant.' });
+      }
+    }
+    row.State = rawPlant.includes(',') ? rawPlant.split(',').pop().trim() : '';
+
+    // Nutrients: columns 5-15 = DM, CP, ADF, NDF, Crude Fat, Ash, Ca, P, Mg, K, S
+    const nutCols = [5,6,7,8,9,10,11,12,13,14,15];
+    NUTRIENTS.forEach(function(n, idx){
+      const raw = (cells[nutCols[idx]] || '').trim();
+      if (raw === ''){ row[n] = null; return; }
+      const v = parseFloat(raw);
+      if (isNaN(v)){
+        flags.push({ type: 'nutrient', severity: 'hard', msg: n + ' value "' + raw + '" is not a number. Fix it in the paste and re-parse.' });
+        row[n] = null;
+        return;
+      }
+      if (v < 0 || v > 100){
+        flags.push({ type: 'nutrient', severity: 'hard', msg: n + ' = ' + v + ' is not a possible percentage. Fix it in the paste and re-parse.' });
+        row[n] = v;
+        return;
+      }
+      row[n] = v;
+      const r = ranges[n];
+      if (v < r.lo || v > r.hi){
+        flags.push({ type: 'nutrient', severity: 'soft', msg: n + ' = ' + v + ' is outside the usual range (' + r.lo.toFixed(2) + '-' + r.hi.toFixed(2) + ').' });
+      }
+    });
+
+    row.Year = isoDate ? parseInt(isoDate.slice(0,4), 10) : null;
+    return row;
+  });
+}
+
+let pendingRows = [];
+
+function preventDefaultFormSubmit(e){ e.preventDefault(); }
+
+function renderPreview(){
+  const container = document.getElementById('previewArea');
+  const submitRow = document.getElementById('submitRow');
+  const status = document.getElementById('submitStatus');
+  status.textContent = '';
+  status.className = 'submit-status';
+
+  if (pendingRows.length === 0){
+    container.innerHTML = '';
+    submitRow.classList.add('app-hidden');
+    return;
+  }
+
+  function hasHard(row){ return row.flags.some(function(f){ return f.severity === 'hard'; }); }
+  function hasOpenSoft(row){ return row.flags.some(function(f){ return f.severity === 'soft'; }) && !row.resolved; }
+  function isBlocking(row){ return hasHard(row) || hasOpenSoft(row); }
+
+  const blockedCount = pendingRows.filter(isBlocking).length;
+  let html = '<div class="preview-summary">' + pendingRows.length + ' row' + (pendingRows.length===1?'':'s') + ' parsed'
+    + (blockedCount ? ' \u2014 ' + blockedCount + ' need' + (blockedCount===1?'s':'') + ' your review before submitting.' : ' \u2014 all clear.') + '</div>';
+
+  pendingRows.forEach(function(row, i){
+    const rowHard = hasHard(row);
+    const rowOpenSoft = hasOpenSoft(row);
+    const cls = (rowHard || rowOpenSoft) ? 'preview-row flagged' : (row.flags.length ? 'preview-row resolved' : 'preview-row');
+    html += '<div class="' + cls + '">';
+    html += '<div class="preview-head"><span>' + (row.Plant || '(no plant)') + '</span><span>' + row.Date + ' \u00b7 ' + row.Type + '</span></div>';
+    html += '<div class="preview-vals">DM ' + fmt(row.DM) + ' CP ' + fmt(row.CP) + ' ADF ' + fmt(row.ADF) + ' NDF ' + fmt(row.NDF)
+          + ' Fat ' + fmt(row['Crude Fat']) + ' Ash ' + fmt(row.Ash) + ' Ca ' + fmt(row.Ca) + ' P ' + fmt(row.P)
+          + ' Mg ' + fmt(row.Mg) + ' K ' + fmt(row.K) + ' S ' + fmt(row.S) + '</div>';
+
+    if (row.flags.length){
+      row.flags.forEach(function(f){ html += '<div class="preview-flag">' + f.msg + '</div>'; });
+    }
+    if (rowHard){
+      html += '<div class="preview-flag"><strong>Can\u2019t submit this row until it\u2019s fixed above and re-parsed.</strong></div>';
+    } else if (rowOpenSoft){
+      const plantFlag = row.flags.find(function(f){ return f.type === 'plant' && f.severity === 'soft'; });
+      if (plantFlag && row.suggestedPlant){
+        html += '<div class="preview-resolve">'
+          + '<button type="button" data-action="use-suggestion" data-row="' + i + '">Use "' + row.suggestedPlant + '"</button>'
+          + '<button type="button" data-action="keep-new" data-row="' + i + '">Keep as new plant</button>'
+          + '</div>';
+      } else {
+        html += '<div class="preview-resolve"><button type="button" data-action="acknowledge" data-row="' + i + '">Looks right, use as-is</button></div>';
+      }
+    }
+    html += '</div>';
+  });
+
+  container.innerHTML = html;
+  submitRow.classList.remove('app-hidden');
+  const stillBlocked = pendingRows.some(isBlocking);
+  document.getElementById('submitDataBtn').disabled = stillBlocked;
+}
+
+document.getElementById('parseBtn').addEventListener('click', function(){
+  const text = document.getElementById('pasteArea').value;
+  pendingRows = parseAndValidate(text);
+  renderPreview();
+});
+
+document.getElementById('previewArea').addEventListener('click', function(e){
+  const btn = e.target.closest('button[data-action]');
+  if (!btn) return;
+  const idx = parseInt(btn.dataset.row, 10);
+  const row = pendingRows[idx];
+  if (!row) return;
+  if (btn.dataset.action === 'use-suggestion'){
+    row.Plant = row.suggestedPlant;
+    row.State = row.Plant.includes(',') ? row.Plant.split(',').pop().trim() : '';
+  }
+  row.resolved = true;
+  renderPreview();
+});
+
+document.getElementById('submitDataBtn').addEventListener('click', async function(){
+  const status = document.getElementById('submitStatus');
+  const btn = document.getElementById('submitDataBtn');
+  btn.disabled = true;
+  status.className = 'submit-status';
+  status.textContent = 'Submitting...';
+
+  const payload = pendingRows.map(function(r){
+    return {
+      sample_date: r.Date, type: r.Type, plant: r.Plant, state: r.State, year: r.Year,
+      dm: r.DM, cp: r.CP, adf: r.ADF, ndf: r.NDF, crude_fat: r['Crude Fat'],
+      ash: r.Ash, ca: r.Ca, p: r.P, mg: r.Mg, k: r.K, s: r.S
+    };
+  });
+
+  const { error } = await sb.from('byproduct_samples').insert(payload);
+  if (error){
+    status.className = 'submit-status err';
+    status.textContent = 'Could not save: ' + error.message;
+    btn.disabled = false;
+    return;
+  }
+  status.className = 'submit-status ok';
+  status.textContent = 'Saved ' + payload.length + ' row' + (payload.length===1?'':'s') + '.';
+  document.getElementById('pasteArea').value = '';
+  pendingRows = [];
+  const ok = await loadDataFromSupabase();
+  if (ok) fullRerender();
+  setTimeout(function(){
+    document.getElementById('previewArea').innerHTML = '';
+    document.getElementById('submitRow').classList.add('app-hidden');
+  }, 1500);
 });
 
 // On page load, if there's already a valid session (from a previous visit), skip the login form.
